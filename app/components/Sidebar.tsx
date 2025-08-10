@@ -1,14 +1,15 @@
 // src/react-app/components/Sidebar.tsx
-import SidebarContent from "./SidebarContent";
-import { ToolMetadata } from "@/lib/toolRegistry";
+
+import type { RouteConfig } from '@/lib/configManager';
+import SidebarContent from './SidebarContent';
 
 interface SidebarProps {
-  tools: ToolMetadata[];
+  tools: RouteConfig[];
 }
 
 export default function Sidebar({ tools }: SidebarProps) {
   return (
-    <div className="hidden md:flex md:w-64 md:flex-col">
+    <div className="h-full">
       <SidebarContent tools={tools} />
     </div>
   );

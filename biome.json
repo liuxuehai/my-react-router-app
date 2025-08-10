@@ -1,0 +1,24 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.1.2/schema.json",
+  "extends": ["ultracite"],
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/*.test.js",
+      "!worker-configuration.d.ts",
+      "!wrangler.jsonc",
+      "!/app/components/ui/**",
+      "!/app/lib/**",
+      "!/app/hooks/**"
+    ]
+  },
+
+  "linter": {
+    "rules": {
+      "suspicious": {
+        "noExplicitAny": "off"
+      }
+    }
+  }
+}

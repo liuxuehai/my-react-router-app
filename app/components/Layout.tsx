@@ -1,74 +1,77 @@
 // src/react-app/components/Layout.tsx
-import { useLocation } from "react-router";
-import { useState, useEffect } from "react";
-import Sidebar from "@/components/Sidebar";
-import SidebarContent, { getCurrentToolName } from "@/components/SidebarContent";
-import toolRegistry, { ToolMetadata } from "@/lib/toolRegistry";
-import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { ModeToggle } from "@/components/mode-toggle";
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+import { Menu } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router';
+import { ModeToggle } from '@/components/mode-toggle';
+import Sidebar from '@/components/Sidebar';
+import SidebarContent, {
+  getCurrentToolName,
+} from '@/components/SidebarContent';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import type { RouteConfig } from '@/lib/configManager';
+import configManager from '@/lib/configManager';
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const [tools, setTools] = useState<ToolMetadata[]>([]);
+  const [tools, setTools] = useState<RouteConfig[]>([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
+
   // 只在Layout中加载一次tools
   useEffect(() => {
-    setTools(toolRegistry.getAllTools());
+    setTools(configManager.getAllConfigs());
   }, []);
-  
+
   const handleMobileNavigate = () => {
     setIsMobileMenuOpen(false);
   };
-  
+
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
       {/* 桌面端Sidebar */}
-      <Sidebar tools={tools} />
-      
+      <div className="hidden h-full md:flex md:w-64 md:flex-col">
+        <Sidebar tools={tools} />
+      </div>
+
       {/* 移动端Sidebar */}
-      <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+      <Sheet onOpenChange={setIsMobileMenuOpen} open={isMobileMenuOpen}>
         <SheetTrigger asChild>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            className="fixed top-4 left-4 z-50 md:hidden"
+          <Button
             aria-label="切换侧边栏"
+            className="fixed top-4 left-4 z-50 md:hidden"
+            size="icon"
+            variant="outline"
           >
             <Menu className="h-4 w-4" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-64">
+        <SheetContent className="w-64 p-0" side="left">
           <div className="sr-only">导航菜单</div>
-          <SidebarContent 
-            tools={tools} 
-            onNavigate={handleMobileNavigate} 
-          />
+          <SidebarContent onNavigate={handleMobileNavigate} tools={tools} />
         </SheetContent>
       </Sheet>
-      
+
       {/* 主内容区域 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden">
         {/* 桌面端头部 */}
-        <header className="hidden md:flex items-center justify-between px-6 py-4 bg-white dark:bg-gray-800 shadow-sm flex-shrink-0">
-          <div></div> {/* 占位符，保持标题居中 */}
-          <h2 className="text-xl font-bold text-gray-800 dark:text-white absolute left-1/2 transform -translate-x-1/2">
+        <header className="hidden flex-shrink-0 items-center justify-between bg-white px-6 py-4 shadow-sm md:flex dark:bg-gray-800">
+          <div /> {/* 占位符，保持标题居中 */}
+          <h2 className="-translate-x-1/2 absolute left-1/2 transform font-bold text-gray-800 text-xl dark:text-white">
             {getCurrentToolName(tools, location.pathname)}
           </h2>
           <div className="flex items-center">
             <ModeToggle />
           </div>
         </header>
-        
+
         {/* 内容区域 */}
         <main className="flex-1 overflow-y-auto p-6">
           {/* 移动端头部 */}
-          <div className="md:hidden bg-white dark:bg-gray-800 shadow-sm z-40 mb-4 -mt-6 -mx-6 p-4">
+          <div className="-mt-6 -mx-6 z-40 mb-4 bg-white p-4 shadow-sm md:hidden dark:bg-gray-800">
             <div className="flex items-center justify-between">
-              <div></div> {/* 占位符，保持标题居中 */}
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-white absolute left-1/2 transform -translate-x-1/2">
+              <div /> {/* 占位符，保持标题居中 */}
+              <h2 className="-translate-x-1/2 absolute left-1/2 transform font-semibold text-gray-800 text-lg dark:text-white">
                 {getCurrentToolName(tools, location.pathname)}
               </h2>
               <ModeToggle />

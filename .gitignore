@@ -15,3 +15,4 @@
 !.dev.vars.example
 .env*
 !.env.example
+.react-router/types

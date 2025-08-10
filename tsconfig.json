@@ -16,12 +16,9 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./app/*"
-      ]
+      "@/*": ["./app/*"]
     },
-    "types": [
-      "./worker-configuration.d.ts"
-    ]
+    "types": ["./worker-configuration.d.ts"],
+    "strictNullChecks": true
   }
 }
