@@ -1,4 +1,4 @@
-import { createRequestHandler } from 'react-router';
+import { createRouteDispatcher } from './route-dispatcher';
 
 declare module 'react-router' {
   export interface AppLoadContext {
@@ -9,15 +9,14 @@ declare module 'react-router' {
   }
 }
 
-const requestHandler = createRequestHandler(
-  () => import('virtual:react-router/server-build'),
-  import.meta.env.MODE
-);
+// 创建路由分发器实例
+const routeDispatcher = createRouteDispatcher({
+  apiPrefix: '/api',
+  enableLogging: true,
+});
 
 export default {
-  async fetch(request, env, ctx) {
-    return requestHandler(request, {
-      cloudflare: { env, ctx },
-    });
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return routeDispatcher(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;
