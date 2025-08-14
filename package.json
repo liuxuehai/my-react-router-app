@@ -11,6 +11,8 @@
     "format": "ultracite format",
     "postinstall": "npm run cf-typegen",
     "preview": "pnpm run build && vite preview",
+    "test": "vitest",
+    "test:run": "vitest run",
     "typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
   },
   "dependencies": {
@@ -81,6 +83,7 @@
     "ultracite": "5.1.2",
     "vite": "^6.3.3",
     "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4",
     "wrangler": "^4.28.1"
   }
 }
