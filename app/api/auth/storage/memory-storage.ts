@@ -1,4 +1,4 @@
-import { KeyStorageProvider, AppConfig, KeyManagerError } from '../types.js';
+import { type KeyStorageProvider, type AppConfig, KeyManagerError } from '../types.js';
 
 /**
  * 基于内存的密钥存储提供者
@@ -18,6 +18,7 @@ export class MemoryStorageProvider implements KeyStorageProvider {
     // 深拷贝以避免外部修改
     const configCopy = JSON.parse(JSON.stringify(config));
     configCopy.createdAt = new Date(config.createdAt);
+    configCopy.updatedAt = config.updatedAt ? new Date(config.updatedAt) : undefined;
     configCopy.keyPairs = config.keyPairs.map(kp => ({
       ...kp,
       createdAt: new Date(kp.createdAt),
@@ -41,6 +42,33 @@ export class MemoryStorageProvider implements KeyStorageProvider {
 
   async listAppIds(): Promise<string[]> {
     return Array.from(this.apps.keys());
+  }
+
+  async getMultipleAppConfigs(appIds: string[]): Promise<Map<string, AppConfig>> {
+    const result = new Map<string, AppConfig>();
+    
+    for (const appId of appIds) {
+      const config = this.apps.get(appId);
+      if (config) {
+        // 深拷贝以避免外部修改
+        const configCopy = JSON.parse(JSON.stringify(config));
+        configCopy.createdAt = new Date(config.createdAt);
+        configCopy.updatedAt = config.updatedAt ? new Date(config.updatedAt) : undefined;
+        configCopy.keyPairs = config.keyPairs.map(kp => ({
+          ...kp,
+          createdAt: new Date(kp.createdAt),
+          expiresAt: kp.expiresAt ? new Date(kp.expiresAt) : undefined
+        }));
+        
+        result.set(appId, configCopy);
+      }
+    }
+    
+    return result;
+  }
+
+  async appExists(appId: string): Promise<boolean> {
+    return this.apps.has(appId);
   }
 
   /**

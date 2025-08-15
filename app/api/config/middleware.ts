@@ -7,9 +7,12 @@ import type { Context, Next } from "hono";
 import type { CorsOptions } from "../middleware/cors.js";
 import type { LoggerOptions } from "../middleware/logger.js";
 import type { ErrorHandlerConfig } from "../middleware/error-handler.js";
+import type { SignatureAuthOptions } from "../middleware/signature-auth.js";
+import type { SignatureAuthFactoryOptions } from "../middleware/signature-auth-factory.js";
 import { cors } from "../middleware/cors.js";
 import { logger } from "../middleware/logger.js";
 import { createErrorHandler } from "../middleware/error-handler.js";
+import { createSignatureAuthMiddleware } from "../middleware/signature-auth-factory.js";
 import type { ApiConfig } from "./index.js";
 
 /**
@@ -22,6 +25,7 @@ export enum MiddlewareType {
   VALIDATION = "validation",
   RATE_LIMIT = "rateLimit",
   AUTH = "auth",
+  SIGNATURE_AUTH = "signatureAuth",
 }
 
 /**
@@ -61,6 +65,7 @@ function registerBuiltinMiddleware() {
   middlewareRegistry.set(MiddlewareType.CORS, cors);
   middlewareRegistry.set(MiddlewareType.LOGGER, logger);
   middlewareRegistry.set(MiddlewareType.ERROR_HANDLER, createErrorHandler);
+  middlewareRegistry.set(MiddlewareType.SIGNATURE_AUTH, createSignatureAuthMiddleware);
 }
 
 // 初始化内置中间件
@@ -122,6 +127,19 @@ export class MiddlewareConfigManager {
           maxBodyLength: 1000,
         },
       },
+      {
+        name: "signatureAuth",
+        type: MiddlewareType.SIGNATURE_AUTH,
+        enabled: false, // 默认禁用，通过 API 配置启用
+        order: 15, // 在 CORS 之后，Logger 之前
+        options: {
+          timeWindowSeconds: 300,
+          debug: false,
+          skipPaths: ['/api/health', '/api/docs'],
+          algorithms: ['RS256', 'ES256'],
+          keyStorageType: 'env',
+        },
+      },
     ];
 
     defaultConfigs.forEach((config) => {
@@ -168,6 +186,21 @@ export class MiddlewareConfigManager {
         logErrors: true,
       };
       this.updateMiddleware("errorHandler", errorConfig);
+    }
+
+    // 更新签名认证配置
+    const signatureAuthConfig = this.configs.get("signatureAuth");
+    if (signatureAuthConfig) {
+      signatureAuthConfig.enabled = apiConfig.security.signatureAuth.enabled;
+      signatureAuthConfig.options = {
+        timeWindowSeconds: apiConfig.security.signatureAuth.timeWindowSeconds,
+        debug: apiConfig.security.signatureAuth.debug,
+        skipPaths: apiConfig.security.signatureAuth.skipPaths,
+        algorithms: apiConfig.security.signatureAuth.algorithms,
+        keyStorageType: apiConfig.security.signatureAuth.keyStorageType,
+        kvNamespace: apiConfig.security.signatureAuth.kvNamespace,
+      };
+      this.updateMiddleware("signatureAuth", signatureAuthConfig);
     }
   }
 
@@ -479,4 +512,6 @@ export type {
   CorsOptions,
   LoggerOptions,
   ErrorHandlerConfig,
+  SignatureAuthOptions,
+  SignatureAuthFactoryOptions,
 };

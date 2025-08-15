@@ -55,6 +55,26 @@ export interface LoggingConfig {
 }
 
 /**
+ * 签名认证配置接口
+ */
+export interface SignatureAuthConfig {
+  /** 是否启用签名认证 */
+  enabled: boolean;
+  /** 时间窗口容差（秒） */
+  timeWindowSeconds: number;
+  /** 支持的签名算法 */
+  algorithms: string[];
+  /** 是否启用调试模式 */
+  debug: boolean;
+  /** 跳过验证的路径模式 */
+  skipPaths: string[];
+  /** 密钥存储类型 */
+  keyStorageType: 'env' | 'kv' | 'memory';
+  /** KV 命名空间（当使用 KV 存储时） */
+  kvNamespace?: string;
+}
+
+/**
  * 安全配置接口
  */
 export interface SecurityConfig {
@@ -73,6 +93,8 @@ export interface SecurityConfig {
   };
   /** 请求体大小限制（字节） */
   maxRequestSize: number;
+  /** 签名认证配置 */
+  signatureAuth: SignatureAuthConfig;
 }
 
 /**
@@ -147,6 +169,14 @@ const defaultConfig: ApiConfig = {
       maxRequests: 100,
     },
     maxRequestSize: 1024 * 1024, // 1MB
+    signatureAuth: {
+      enabled: false,
+      timeWindowSeconds: 300, // 5 minutes
+      algorithms: ['RS256', 'ES256'],
+      debug: false,
+      skipPaths: ['/api/health', '/api/docs'],
+      keyStorageType: 'env',
+    },
   },
   database: {
     poolSize: 10,
@@ -185,6 +215,15 @@ const productionOverrides: Partial<ApiConfig> = {
       maxRequests: 100,
     },
     maxRequestSize: 512 * 1024, // 512KB
+    signatureAuth: {
+      enabled: true,
+      timeWindowSeconds: 300,
+      algorithms: ['RS256', 'ES256'],
+      debug: false,
+      skipPaths: ['/api/health'],
+      keyStorageType: 'kv',
+      kvNamespace: 'SIGNATURE_KEYS',
+    },
   },
   database: {
     poolSize: 20,
@@ -215,6 +254,14 @@ const testOverrides: Partial<ApiConfig> = {
       maxRequests: 1000,
     },
     maxRequestSize: 1024 * 1024,
+    signatureAuth: {
+      enabled: false,
+      timeWindowSeconds: 300,
+      algorithms: ['RS256', 'ES256'],
+      debug: true,
+      skipPaths: ['/api/health', '/api/docs', '/api/test'],
+      keyStorageType: 'env',
+    },
   },
   database: {
     poolSize: 5,
@@ -393,6 +440,33 @@ function loadConfigFromEnv(env: Record<string, any> = {}): Partial<ApiConfig> {
   }
   if (Object.keys(rateLimitConfig).length > 0) {
     securityConfig.rateLimit = rateLimitConfig as SecurityConfig["rateLimit"];
+  }
+
+  // 签名认证配置
+  const signatureAuthConfig: Partial<SignatureAuthConfig> = {};
+  if (env.SIGNATURE_AUTH_ENABLED !== undefined) {
+    signatureAuthConfig.enabled = env.SIGNATURE_AUTH_ENABLED === "true";
+  }
+  if (env.SIGNATURE_TIME_WINDOW) {
+    signatureAuthConfig.timeWindowSeconds = parseInt(env.SIGNATURE_TIME_WINDOW, 10);
+  }
+  if (env.SIGNATURE_ALGORITHMS) {
+    signatureAuthConfig.algorithms = env.SIGNATURE_ALGORITHMS.split(",");
+  }
+  if (env.SIGNATURE_DEBUG !== undefined) {
+    signatureAuthConfig.debug = env.SIGNATURE_DEBUG === "true";
+  }
+  if (env.SIGNATURE_SKIP_PATHS) {
+    signatureAuthConfig.skipPaths = env.SIGNATURE_SKIP_PATHS.split(",");
+  }
+  if (env.SIGNATURE_KEY_STORAGE_TYPE) {
+    signatureAuthConfig.keyStorageType = env.SIGNATURE_KEY_STORAGE_TYPE as 'env' | 'kv' | 'memory';
+  }
+  if (env.SIGNATURE_KV_NAMESPACE) {
+    signatureAuthConfig.kvNamespace = env.SIGNATURE_KV_NAMESPACE;
+  }
+  if (Object.keys(signatureAuthConfig).length > 0) {
+    securityConfig.signatureAuth = signatureAuthConfig as SignatureAuthConfig;
   }
 
   if (Object.keys(securityConfig).length > 0) {

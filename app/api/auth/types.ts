@@ -32,6 +32,32 @@ export interface AppConfig {
   permissions: string[];
   /** 创建时间 */
   createdAt: Date;
+  /** 应用描述 */
+  description?: string;
+  /** 访问控制配置 */
+  accessControl?: AccessControlConfig;
+  /** 应用标签 */
+  tags?: string[];
+  /** 最后更新时间 */
+  updatedAt?: Date;
+}
+
+export interface AccessControlConfig {
+  /** 允许访问的路径模式 */
+  allowedPaths?: string[];
+  /** 禁止访问的路径模式 */
+  deniedPaths?: string[];
+  /** IP 白名单 */
+  allowedIPs?: string[];
+  /** 速率限制配置 */
+  rateLimit?: {
+    /** 每分钟最大请求数 */
+    requestsPerMinute: number;
+    /** 突发请求数 */
+    burstLimit?: number;
+  };
+  /** 时间窗口限制（秒） */
+  customTimeWindow?: number;
 }
 
 export interface KeyManager {
@@ -51,6 +77,26 @@ export interface KeyManager {
   clearCache(): void;
   /** 获取缓存统计信息 */
   getCacheStats(): { size: number; hitRate?: number };
+  
+  // Multi-channel and multi-key support methods
+  /** 列出所有应用 ID */
+  listApps(): Promise<string[]>;
+  /** 批量获取应用配置 */
+  getMultipleAppConfigs(appIds: string[]): Promise<Map<string, AppConfig>>;
+  /** 启用/禁用应用 */
+  setAppEnabled(appId: string, enabled: boolean): Promise<void>;
+  /** 添加密钥对到现有应用 */
+  addKeyPair(appId: string, keyPair: KeyPair): Promise<void>;
+  /** 更新密钥对 */
+  updateKeyPair(appId: string, keyId: string, updates: Partial<KeyPair>): Promise<void>;
+  /** 删除密钥对 */
+  removeKeyPair(appId: string, keyId: string): Promise<void>;
+  /** 启用/禁用密钥对 */
+  setKeyPairEnabled(appId: string, keyId: string, enabled: boolean): Promise<void>;
+  /** 验证访问权限 */
+  validateAccess(appId: string, path: string, method: string, clientIP?: string): Promise<boolean>;
+  /** 获取应用的有效密钥对 */
+  getValidKeyPairs(appId: string): Promise<KeyPair[]>;
 }
 
 export interface KeyStorageProvider {
@@ -62,6 +108,10 @@ export interface KeyStorageProvider {
   deleteAppConfig(appId: string): Promise<void>;
   /** 列出所有应用 ID */
   listAppIds(): Promise<string[]>;
+  /** 批量获取应用配置 */
+  getMultipleAppConfigs?(appIds: string[]): Promise<Map<string, AppConfig>>;
+  /** 检查应用是否存在 */
+  appExists?(appId: string): Promise<boolean>;
 }
 
 export interface KeyManagerConfig {
