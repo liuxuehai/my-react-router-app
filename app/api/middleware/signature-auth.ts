@@ -6,6 +6,8 @@ import {
   type SignatureData,
   type SupportedAlgorithm,
 } from "../auth/signature-utils.js";
+import { OptimizedSignatureUtils } from "../auth/optimized-signature-utils.js";
+import { globalPerformanceMonitor, performanceMonitor } from "../auth/performance-monitor.js";
 
 export interface SignatureAuthOptions {
   /** 密钥管理器实例 */
@@ -21,6 +23,10 @@ export interface SignatureAuthOptions {
     error: SignatureAuthError,
     c: Context
   ) => Response | Promise<Response>;
+  /** 是否启用性能优化 */
+  enableOptimization?: boolean;
+  /** 是否启用性能监控 */
+  enablePerformanceMonitoring?: boolean;
 }
 
 export interface SignatureHeaders {
@@ -58,6 +64,8 @@ const defaultOptions: Partial<SignatureAuthOptions> = {
   timeWindowSeconds: 300,
   debug: false,
   skipPaths: [],
+  enableOptimization: true,
+  enablePerformanceMonitoring: true,
 };
 
 /**
@@ -67,7 +75,20 @@ const defaultOptions: Partial<SignatureAuthOptions> = {
 export function signatureAuth(options: SignatureAuthOptions) {
   const opts = { ...defaultOptions, ...options };
 
+  // 初始化优化工具（如果启用）
+  if (opts.enableOptimization) {
+    OptimizedSignatureUtils.initialize({
+      enableKeyCache: true,
+      keyCacheTTL: 3600,
+      maxCacheSize: 1000,
+      enableMetrics: opts.enablePerformanceMonitoring || false,
+      enableFastFail: true,
+    });
+  }
+
   return async (c: Context, next: Next) => {
+    const startTime = opts.enablePerformanceMonitoring ? performance.now() : 0;
+    
     try {
       // 检查是否跳过验证
       if (shouldSkipPath(c.req.path, opts.skipPaths || [])) {
@@ -190,13 +211,23 @@ export function signatureAuth(options: SignatureAuthOptions) {
 
       const dataString = SignatureUtils.buildSignatureString(signatureData);
 
-      // 验证签名
-      const isValidSignature = await SignatureUtils.verifySignature(
-        dataString,
-        headers.signature,
-        keyPair.publicKey,
-        keyPair.algorithm
-      );
+      // 验证签名（使用优化版本或标准版本）
+      let isValidSignature: boolean;
+      if (opts.enableOptimization) {
+        isValidSignature = await OptimizedSignatureUtils.verifySignatureOptimized(
+          dataString,
+          headers.signature,
+          keyPair.publicKey,
+          keyPair.algorithm
+        );
+      } else {
+        isValidSignature = await SignatureUtils.verifySignature(
+          dataString,
+          headers.signature,
+          keyPair.publicKey,
+          keyPair.algorithm
+        );
+      }
 
       if (!isValidSignature) {
         throw new SignatureAuthError(
@@ -227,7 +258,27 @@ export function signatureAuth(options: SignatureAuthOptions) {
       });
 
       await next();
+
+      // 记录成功的性能指标
+      if (opts.enablePerformanceMonitoring) {
+        const duration = performance.now() - startTime;
+        globalPerformanceMonitor.recordTiming('signature_verification', duration, true, {
+          appId: headers.appId,
+          keyId,
+          algorithm: keyPair.algorithm,
+          optimized: opts.enableOptimization,
+        });
+      }
     } catch (error) {
+      // 记录失败的性能指标
+      if (opts.enablePerformanceMonitoring) {
+        const duration = performance.now() - startTime;
+        globalPerformanceMonitor.recordTiming('signature_verification', duration, false, {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          optimized: opts.enableOptimization,
+        });
+      }
+
       if (opts.debug) {
         console.error("[SignatureAuth] Verification failed:", error);
       }
