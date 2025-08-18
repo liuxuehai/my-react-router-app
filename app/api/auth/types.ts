@@ -116,13 +116,29 @@ export interface KeyStorageProvider {
 
 export interface KeyManagerConfig {
   /** 存储提供者类型 */
-  storageType: "env" | "kv" | "memory";
+  storageType: "env" | "kv" | "memory" | "file";
   /** 缓存过期时间（秒） */
   cacheExpiry: number;
   /** 是否启用缓存 */
   enableCache: boolean;
   /** 调试模式 */
   debug: boolean;
+  /** 存储特定配置 */
+  storageConfig?: {
+    /** KV 存储配置 */
+    kv?: {
+      keyPrefix?: string;
+      retryConfig?: {
+        maxRetries?: number;
+        baseDelay?: number;
+        maxDelay?: number;
+      };
+    };
+    /** 文件存储配置 */
+    file?: {
+      configPath: string;
+    };
+  };
 }
 
 export class KeyManagerError extends Error {

@@ -6,8 +6,7 @@ import {
   type KeyManagerConfig,
   KeyManagerError,
 } from "./types.js";
-import { EnvStorageProvider } from "./storage/env-storage.js";
-import { MemoryStorageProvider } from "./storage/memory-storage.js";
+import { StorageProviderFactory, type StorageProviderConfig } from "./storage/storage-factory.js";
 
 /**
  * 密钥管理器实现
@@ -21,10 +20,11 @@ export class KeyManagerImpl implements KeyManager {
 
   constructor(
     config: KeyManagerConfig,
-    env?: Record<string, string | undefined>
+    env?: Record<string, string | undefined>,
+    kvNamespace?: KVNamespace
   ) {
     this.config = config;
-    this.storage = this.createStorageProvider(config.storageType, env);
+    this.storage = this.createStorageProvider(config, env, kvNamespace);
   }
 
   async getAppConfig(appId: string): Promise<AppConfig | null> {
@@ -188,8 +188,6 @@ export class KeyManagerImpl implements KeyManager {
   }
 
   async generateKeyPair(algorithm: string): Promise<KeyPair> {
-    // 这里只是创建一个基本的密钥对结构
-    // 实际的密钥生成将在后续任务中实现
     if (!["RS256", "RS512", "ES256", "ES512"].includes(algorithm)) {
       throw new KeyManagerError(
         `Unsupported algorithm ${algorithm}`,
@@ -198,15 +196,35 @@ export class KeyManagerImpl implements KeyManager {
       );
     }
 
-    // 临时实现 - 返回占位符密钥对
-    return {
-      keyId: `key_${Date.now()}`,
-      publicKey:
-        "-----BEGIN PUBLIC KEY-----\n[PLACEHOLDER]\n-----END PUBLIC KEY-----",
-      algorithm: algorithm as KeyPair["algorithm"],
-      createdAt: new Date(),
-      enabled: true,
-    };
+    try {
+      // 动态导入密钥生成器以避免循环依赖
+      const { KeyGenerator } = await import("./key-generator.js");
+      
+      // 生成完整的密钥对
+      const generatedKeyPair = await KeyGenerator.generateKeyPair(
+        algorithm as "RS256" | "RS512" | "ES256" | "ES512"
+      );
+
+      // 返回公钥部分（不包含私钥）
+      return {
+        keyId: generatedKeyPair.keyId,
+        publicKey: generatedKeyPair.publicKey,
+        algorithm: generatedKeyPair.algorithm,
+        createdAt: generatedKeyPair.createdAt,
+        expiresAt: generatedKeyPair.expiresAt,
+        enabled: generatedKeyPair.enabled,
+      };
+    } catch (error) {
+      if (this.config.debug) {
+        console.error(`[KeyManager] Error generating key pair:`, error);
+      }
+
+      throw new KeyManagerError(
+        `Failed to generate key pair: ${error instanceof Error ? error.message : String(error)}`,
+        "STORAGE_ERROR",
+        { algorithm }
+      );
+    }
   }
 
   /**
@@ -592,21 +610,11 @@ export class KeyManagerImpl implements KeyManager {
   }
 
   private createStorageProvider(
-    type: string,
-    env?: Record<string, string | undefined>
+    config: KeyManagerConfig,
+    env?: Record<string, string | undefined>,
+    kvNamespace?: KVNamespace
   ): KeyStorageProvider {
-    switch (type) {
-      case "env":
-        return new EnvStorageProvider(env);
-      case "memory":
-        return new MemoryStorageProvider();
-      default:
-        throw new KeyManagerError(
-          `Unsupported storage type: ${type}`,
-          "VALIDATION_ERROR",
-          { storageType: type, supportedTypes: ["env", "memory"] }
-        );
-    }
+    return StorageProviderFactory.createFromKeyManagerConfig(config, env, kvNamespace);
   }
 
   private isCacheValid(timestamp: number): boolean {
@@ -673,7 +681,8 @@ export class KeyManagerImpl implements KeyManager {
  */
 export function createKeyManager(
   config: Partial<KeyManagerConfig> = {},
-  env?: Record<string, string | undefined>
+  env?: Record<string, string | undefined>,
+  kvNamespace?: KVNamespace
 ): KeyManager {
   const defaultConfig: KeyManagerConfig = {
     storageType: "env",
@@ -684,5 +693,5 @@ export function createKeyManager(
 
   const finalConfig = { ...defaultConfig, ...config };
 
-  return new KeyManagerImpl(finalConfig, env);
+  return new KeyManagerImpl(finalConfig, env, kvNamespace);
 }

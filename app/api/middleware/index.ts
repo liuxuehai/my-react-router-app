@@ -4,6 +4,7 @@ export * from './logger.js';
 export * from './error-handler.js';
 export * from './validation.js';
 export * from './signature-auth.js';
+export * from './route-signature-auth.js';
 
 // Re-export commonly used types and utilities
 export type { Context, Next } from 'hono';

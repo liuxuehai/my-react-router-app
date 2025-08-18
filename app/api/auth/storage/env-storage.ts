@@ -7,6 +7,15 @@ import {
 } from "../types.js";
 
 /**
+ * 重试配置接口
+ */
+interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+}
+
+/**
  * 基于环境变量的密钥存储提供者
  *
  * 环境变量格式:
@@ -31,21 +40,39 @@ import {
  */
 export class EnvStorageProvider implements KeyStorageProvider {
   private env: Record<string, string | undefined>;
+  private debug: boolean;
+  private retryConfig: RetryConfig;
 
-  constructor(env: Record<string, string | undefined> = process.env) {
+  constructor(
+    env: Record<string, string | undefined> = process.env,
+    options: {
+      debug?: boolean;
+      retryConfig?: Partial<RetryConfig>;
+    } = {}
+  ) {
     this.env = env;
+    this.debug = options.debug || false;
+    this.retryConfig = {
+      maxRetries: options.retryConfig?.maxRetries || 3,
+      baseDelay: options.retryConfig?.baseDelay || 100,
+      maxDelay: options.retryConfig?.maxDelay || 2000,
+    };
   }
 
   async getAppConfig(appId: string): Promise<AppConfig | null> {
-    const prefix = `APP_${appId.toUpperCase()}_`;
+    return this.withRetry(async () => {
+      const prefix = `APP_${appId.toUpperCase()}_`;
 
-    // 检查是否存在默认公钥或任何密钥
-    const hasDefaultKey = !!this.env[`${prefix}PUBLIC_KEY`];
-    const hasAnyKey = hasDefaultKey || this.hasAnyKeyForApp(appId);
+      // 检查是否存在默认公钥或任何密钥
+      const hasDefaultKey = !!this.env[`${prefix}PUBLIC_KEY`];
+      const hasAnyKey = hasDefaultKey || this.hasAnyKeyForApp(appId);
 
-    if (!hasAnyKey) {
-      return null;
-    }
+      if (!hasAnyKey) {
+        if (this.debug) {
+          console.log(`[EnvStorage] App config not found for ${appId}`);
+        }
+        return null;
+      }
 
     const enabled = this.env[`${prefix}ENABLED`] !== "false";
     const name = this.env[`${prefix}NAME`] || appId;
@@ -100,20 +127,25 @@ export class EnvStorageProvider implements KeyStorageProvider {
     const additionalKeys = this.getAdditionalKeysForApp(appId);
     keyPairs.push(...additionalKeys);
 
-    // 构建访问控制配置
-    const accessControl = this.buildAccessControlConfig(prefix);
+      // 构建访问控制配置
+      const accessControl = this.buildAccessControlConfig(prefix);
 
-    return {
-      appId,
-      name,
-      keyPairs,
-      enabled,
-      permissions,
-      createdAt: new Date(),
-      description,
-      tags,
-      accessControl,
-    };
+      if (this.debug) {
+        console.log(`[EnvStorage] Loaded app config for ${appId} with ${keyPairs.length} key pairs`);
+      }
+
+      return {
+        appId,
+        name,
+        keyPairs,
+        enabled,
+        permissions,
+        createdAt: new Date(),
+        description,
+        tags,
+        accessControl,
+      };
+    });
   }
 
   async saveAppConfig(config: AppConfig): Promise<void> {
@@ -133,52 +165,87 @@ export class EnvStorageProvider implements KeyStorageProvider {
   }
 
   async listAppIds(): Promise<string[]> {
-    const appIds = new Set<string>();
+    return this.withRetry(async () => {
+      const appIds = new Set<string>();
 
-    for (const key of Object.keys(this.env)) {
-      if (
-        key.startsWith("APP_") &&
-        (key.endsWith("_PUBLIC_KEY") ||
-          (key.includes("_KEY_") && key.endsWith("_PUBLIC_KEY")))
-      ) {
-        let appId: string;
-        if (key.includes("_KEY_")) {
-          // Extract app ID from APP_{APP_ID}_KEY_{KEY_ID}_PUBLIC_KEY
-          const match = key.match(/^APP_(.+?)_KEY_/);
-          if (match) {
-            appId = match[1].toLowerCase();
+      for (const key of Object.keys(this.env)) {
+        if (
+          key.startsWith("APP_") &&
+          (key.endsWith("_PUBLIC_KEY") ||
+            (key.includes("_KEY_") && key.endsWith("_PUBLIC_KEY")))
+        ) {
+          let appId: string;
+          if (key.includes("_KEY_")) {
+            // Extract app ID from APP_{APP_ID}_KEY_{KEY_ID}_PUBLIC_KEY
+            const match = key.match(/^APP_(.+?)_KEY_/);
+            if (match) {
+              appId = match[1].toLowerCase();
+            } else {
+              continue;
+            }
           } else {
-            continue;
+            // Extract app ID from APP_{APP_ID}_PUBLIC_KEY
+            appId = key.slice(4, -11).toLowerCase(); // Remove APP_ prefix and _PUBLIC_KEY suffix
           }
-        } else {
-          // Extract app ID from APP_{APP_ID}_PUBLIC_KEY
-          appId = key.slice(4, -11).toLowerCase(); // Remove APP_ prefix and _PUBLIC_KEY suffix
+          appIds.add(appId);
         }
-        appIds.add(appId);
       }
-    }
 
-    return Array.from(appIds);
+      const result = Array.from(appIds);
+      if (this.debug) {
+        console.log(`[EnvStorage] Found ${result.length} apps in environment variables`);
+      }
+
+      return result;
+    });
   }
 
   async getMultipleAppConfigs(
     appIds: string[]
   ): Promise<Map<string, AppConfig>> {
-    const result = new Map<string, AppConfig>();
+    return this.withRetry(async () => {
+      const result = new Map<string, AppConfig>();
 
-    for (const appId of appIds) {
-      const config = await this.getAppConfig(appId);
-      if (config) {
-        result.set(appId, config);
+      for (const appId of appIds) {
+        try {
+          const config = await this.getAppConfig(appId);
+          if (config) {
+            result.set(appId, config);
+          }
+        } catch (error) {
+          if (this.debug) {
+            console.warn(`[EnvStorage] Failed to load config for ${appId}:`, error);
+          }
+          // 继续处理其他应用，不抛出错误
+        }
       }
-    }
 
-    return result;
+      if (this.debug) {
+        console.log(`[EnvStorage] Loaded ${result.size} app configs out of ${appIds.length} requested`);
+      }
+
+      return result;
+    });
   }
 
   async appExists(appId: string): Promise<boolean> {
-    const prefix = `APP_${appId.toUpperCase()}_`;
-    return !!this.env[`${prefix}PUBLIC_KEY`] || this.hasAnyKeyForApp(appId);
+    try {
+      return this.withRetry(async () => {
+        const prefix = `APP_${appId.toUpperCase()}_`;
+        const exists = !!this.env[`${prefix}PUBLIC_KEY`] || this.hasAnyKeyForApp(appId);
+        
+        if (this.debug) {
+          console.log(`[EnvStorage] App ${appId} exists: ${exists}`);
+        }
+        
+        return exists;
+      });
+    } catch (error) {
+      if (this.debug) {
+        console.error(`[EnvStorage] Error checking if app ${appId} exists:`, error);
+      }
+      return false;
+    }
   }
 
   private validatePublicKeyFormat(publicKey: string): boolean {
@@ -346,5 +413,41 @@ export class EnvStorageProvider implements KeyStorageProvider {
       rateLimit,
       customTimeWindow,
     };
+  }
+
+  /**
+   * 重试机制包装器
+   */
+  private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        if (attempt === this.retryConfig.maxRetries) {
+          break;
+        }
+
+        // 计算延迟时间（指数退避）
+        const delay = Math.min(
+          this.retryConfig.baseDelay * Math.pow(2, attempt),
+          this.retryConfig.maxDelay
+        );
+
+        if (this.debug) {
+          console.warn(
+            `[EnvStorage] Operation failed (attempt ${attempt + 1}/${this.retryConfig.maxRetries + 1}), retrying in ${delay}ms:`,
+            error
+          );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError;
   }
 }
